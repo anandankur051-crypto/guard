@@ -1,0 +1,20 @@
+1. Customer Identification Procedure
+The company shall obtain the customer's PAN card and address proof at the time of account opening. A photograph of the customer shall be collected and verified against the submitted identity document.
+
+2. Periodic KYC Updation
+Customers classified as low risk shall have their KYC records updated once every ten years. Customers classified as high risk shall have their KYC records updated once every two years.
+
+3. Video-based Customer Identification
+Video-based customer identification is not currently supported by the company. All KYC must be completed through in-person verification at a branch.
+
+4. Beneficial Ownership Declaration
+For non-individual customers such as companies and trusts, the company shall obtain a declaration of the beneficial owner holding twenty-five percent or more ownership or control.
+
+5. Record Retention
+All KYC documents and transaction records shall be retained for a minimum period of five years from the date of transaction or account closure, whichever is later.
+
+6. Risk Categorization
+Customers shall be categorized into low, medium, and high risk based on the nature of business, location, and transaction profile at the time of account opening only.
+
+7. Politically Exposed Persons
+The company shall obtain senior management approval before establishing a relationship with a Politically Exposed Person (PEP) or their family members.

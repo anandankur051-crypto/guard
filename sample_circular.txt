@@ -1,0 +1,14 @@
+1. Video-based Customer Identification Process
+Regulated entities are now permitted and encouraged to complete customer due diligence through a video-based identification process, provided the process includes a live capture of the customer along with a randomly generated code and geotagging of the location.
+
+2. Periodic Updation of KYC for Low Risk Customers
+The periodicity of KYC updation for low risk individual customers is hereby revised. Low risk customers must now have their KYC records updated once every eight years instead of the previously permitted longer period.
+
+3. Beneficial Ownership Threshold for Trusts
+For trusts, the threshold for identifying a beneficial owner is revised to fifteen percent of ownership or entitlement, lower than the threshold applicable to companies.
+
+4. Re-categorization of Risk Profile
+Regulated entities shall periodically re-assess and re-categorize the risk profile of existing customers based on updated transaction behaviour, and not rely solely on the risk category assigned at account opening.
+
+5. Record Retention Period
+Entities shall retain KYC records and transaction data for a minimum of eight years from the date of cessation of the business relationship.
