@@ -20,25 +20,32 @@ before you have API access set up.
 
 ```bash
 export REGTRACK_LOCAL_TEST_MODE=false
-export ANTHROPIC_API_KEY=your_key_here
-pip install sentence-transformers chromadb anthropic --break-system-packages
-python3 pipeline.py data/sample_policy.txt data/sample_circular.txt
+export XAI_API_KEY=your_key_here
+pip install sentence-transformers chromadb openai --break-system-packages
+python3 pipeline.py sample_policy.txt sample_circular.txt
 ```
 
 This downloads the `bge-small-en-v1.5` embedding model (needs internet,
-~130MB, first run only), stores vectors in ChromaDB, and calls Claude
+~130MB, first run only), stores vectors in ChromaDB, and calls Grok
 for the actual gap-analysis reasoning. Results will be meaningfully
 better than mock mode -- the mock uses word overlap and misses things
 like numeric/threshold changes (e.g. "10 years" vs "8 years"), which
 the real LLM catches correctly.
 
-## Running as an API
+## Running as a web app
 
 ```bash
 uvicorn main:app --reload
 ```
-Then `POST /regtrack/analyze` with `policy_file` and `circular_file` as
-multipart form uploads (see `router.py`).
+
+Open `http://127.0.0.1:8000/` to use the web UI. It fetches live RBI
+notices from `rbi.org.in`, lets you pick one, upload your policy, and
+run gap analysis.
+
+API endpoints:
+- `GET /regtrack/notices` — fetch parsed RBI notifications
+- `POST /regtrack/analyze` — upload `policy_file` + `circular_file`
+- `POST /regtrack/analyze-notice` — upload `policy_file` + RBI notice URL/id
 
 ## Auto-fetching new circulars from RBI
 
@@ -71,10 +78,12 @@ regtrack/
 ├── chunker.py            # splits documents into clause-level chunks
 ├── embeddings.py          # TF-IDF (local) or sentence-transformers (real)
 ├── vector_store.py         # in-memory cosine sim (local) or ChromaDB (real)
-├── gap_analyzer.py          # mock heuristic (local) or Claude API (real)
+├── gap_analyzer.py          # mock heuristic (local) or Grok API (real)
 ├── pipeline.py                # orchestrates the full flow
-├── router.py                   # FastAPI endpoint
-├── scraper.py                    # RBI auto-fetch + scheduler
+├── main.py                     # FastAPI web app entry point
+├── router.py                   # FastAPI endpoints + RBI notice routes
+├── scraper.py                    # RBI notice parser + auto-fetch scheduler
+├── static/index.html             # web UI for RBI notice analysis
 └── data/
     ├── sample_policy.txt          # test old-policy doc
     └── sample_circular.txt         # test new-circular doc

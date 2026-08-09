@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RegTrack — RBI Notice Analyzer</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --border: #334155;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --danger: #f87171;
+      --ok: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, sans-serif;
+      background: linear-gradient(180deg, #0b1220, #111827);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; }
+    p.lead { color: var(--muted); margin-top: 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: rgba(17, 24, 39, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    label { display: block; font-size: 0.9rem; margin-bottom: 8px; color: var(--muted); }
+    input[type="file"], select, button {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0b1220;
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+    }
+    button {
+      background: var(--accent);
+      color: #082f49;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
+    .toolbar button { width: auto; margin: 0; padding: 8px 14px; }
+    .notice-list {
+      max-height: 420px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .notice {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .notice:last-child { border-bottom: none; }
+    .notice:hover, .notice.selected { background: rgba(56, 189, 248, 0.08); }
+    .notice .date { color: var(--muted); font-size: 0.85rem; }
+    .notice .title { margin-top: 4px; line-height: 1.4; }
+    .status { margin-top: 10px; color: var(--muted); min-height: 1.2rem; }
+    .status.error { color: var(--danger); }
+    .status.ok { color: var(--ok); }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      max-height: 500px;
+      overflow: auto;
+      font-size: 0.85rem;
+    }
+    .pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      font-size: 0.8rem;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="pill">Live RBI feed</div>
+    <h1>RegTrack</h1>
+    <p class="lead">Fetch RBI notifications directly from rbi.org.in and compare them against your policy using Grok-powered gap analysis.</p>
+
+    <div class="grid">
+      <section class="card">
+        <div class="toolbar">
+          <strong>RBI Notices</strong>
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+        <div id="noticeStatus" class="status">Loading notices from RBI...</div>
+        <div id="noticeList" class="notice-list"></div>
+      </section>
+
+      <section class="card">
+        <label for="policyFile">Company policy (.pdf or .txt)</label>
+        <input id="policyFile" type="file" accept=".pdf,.txt" />
+
+        <label for="selectedNotice" style="margin-top: 16px;">Selected RBI notice</label>
+        <select id="selectedNotice">
+          <option value="">Select a notice after loading</option>
+        </select>
+
+        <button id="analyzeBtn" type="button" disabled>Analyze gap against selected notice</button>
+        <div id="analyzeStatus" class="status"></div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top: 20px;">
+      <strong>Analysis report</strong>
+      <pre id="report">Run an analysis to see results here.</pre>
+    </section>
+  </div>
+
+  <script>
+    const noticeList = document.getElementById("noticeList");
+    const noticeStatus = document.getElementById("noticeStatus");
+    const selectedNotice = document.getElementById("selectedNotice");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const analyzeBtn = document.getElementById("analyzeBtn");
+    const analyzeStatus = document.getElementById("analyzeStatus");
+    const policyFile = document.getElementById("policyFile");
+    const report = document.getElementById("report");
+
+    let notices = [];
+
+    function renderNotices() {
+      noticeList.innerHTML = "";
+      selectedNotice.innerHTML = '<option value="">Select a notice</option>';
+
+      notices.forEach((notice, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${notice.date || "Unknown date"} — ${notice.title}`;
+        selectedNotice.appendChild(option);
+
+        const item = document.createElement("div");
+        item.className = "notice";
+        item.dataset.index = String(index);
+        item.innerHTML = `
+          <div class="date">${notice.date || "Unknown date"} · ${notice.file_size || "PDF"}</div>
+          <div class="title">${notice.title}</div>
+        `;
+        item.addEventListener("click", () => {
+          document.querySelectorAll(".notice").forEach(el => el.classList.remove("selected"));
+          item.classList.add("selected");
+          selectedNotice.value = String(index);
+          updateAnalyzeButton();
+        });
+        noticeList.appendChild(item);
+      });
+    }
+
+    function updateAnalyzeButton() {
+      analyzeBtn.disabled = !policyFile.files.length || selectedNotice.value === "";
+    }
+
+    async function loadNotices() {
+      noticeStatus.textContent = "Fetching notices from RBI...";
+      noticeStatus.className = "status";
+      refreshBtn.disabled = true;
+
+      try {
+        const resp = await fetch("/regtrack/notices?limit=50");
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        notices = data.notices || [];
+        renderNotices();
+        noticeStatus.textContent = `Loaded ${notices.length} notices from RBI.`;
+        noticeStatus.className = "status ok";
+      } catch (err) {
+        noticeStatus.textContent = `Failed to load notices: ${err.message}`;
+        noticeStatus.className = "status error";
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    }
+
+    async function analyzeNotice() {
+      const notice = notices[Number(selectedNotice.value)];
+      const file = policyFile.files[0];
+      if (!notice || !file) return;
+
+      analyzeBtn.disabled = true;
+      analyzeStatus.textContent = "Downloading circular and running analysis...";
+      analyzeStatus.className = "status";
+      report.textContent = "Working...";
+
+      const formData = new FormData();
+      formData.append("policy_file", file);
+
+      try {
+        const params = new URLSearchParams({
+          notice_id: notice.id,
+          pdf_url: notice.pdf_url,
+        });
+        const resp = await fetch(`/regtrack/analyze-notice?${params.toString()}`, {
+          method: "POST",
+          body: formData,
+        });
+        const text = await resp.text();
+        if (!resp.ok) throw new Error(text);
+
+        const data = JSON.parse(text);
+        report.textContent = JSON.stringify(data, null, 2);
+        analyzeStatus.textContent = `Analyzed ${data.total_clauses_analyzed} clauses.`;
+        analyzeStatus.className = "status ok";
+      } catch (err) {
+        report.textContent = err.message;
+        analyzeStatus.textContent = "Analysis failed.";
+        analyzeStatus.className = "status error";
+      } finally {
+        updateAnalyzeButton();
+      }
+    }
+
+    refreshBtn.addEventListener("click", loadNotices);
+    analyzeBtn.addEventListener("click", analyzeNotice);
+    policyFile.addEventListener("change", updateAnalyzeButton);
+    selectedNotice.addEventListener("change", () => {
+      document.querySelectorAll(".notice").forEach(el => el.classList.remove("selected"));
+      const selected = noticeList.querySelector(`[data-index="${selectedNotice.value}"]`);
+      if (selected) selected.classList.add("selected");
+      updateAnalyzeButton();
+    });
+
+    loadNotices();
+  </script>
+</body>
+</html>

@@ -1,97 +1,212 @@
 """
-Takes a (new_circular_clause, matched_old_policy_clause) pair and decides:
-compliant / gap / conflict / no_existing_policy.
+Gap analysis for RegTrack.
 
-- MockLLM: rule-of-thumb heuristic, zero API cost, used in LOCAL_TEST_MODE
-  so you can demo the full pipeline without an API key.
-- ClaudeGapAnalyzer: real call to Claude for the actual hackathon demo.
+- MockLLM: rule-based offline analyzer.
+- GeminiGapAnalyzer: Gemini-based compliance analysis.
 """
 
 import json
 import re
-from config import LOCAL_TEST_MODE, ANTHROPIC_API_KEY, ANTHROPIC_MODEL
+
+from config import (
+    LOCAL_TEST_MODE,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+)
 
 
-PROMPT_TEMPLATE = """You are a compliance analyst. Compare the new regulatory \
-clause against the company's existing policy clause and decide if the \
-existing policy still complies.
+PROMPT_TEMPLATE = """
+You are a regulatory compliance analyst.
 
-New regulatory clause:
-\"\"\"{new_clause}\"\"\"
+Compare the NEW regulatory requirement with the EXISTING company policy.
 
-Closest existing company policy clause found:
-\"\"\"{old_clause}\"\"\"
+NEW REGULATORY REQUIREMENT:
+{new_clause}
 
-Respond with ONLY a JSON object, no other text, in this exact shape:
-{{"status": "compliant" | "gap" | "conflict" | "no_existing_policy",
-  "explanation": "one sentence explaining the verdict",
-  "suggested_edit": "one sentence suggested policy fix, or null if compliant"}}
+EXISTING COMPANY POLICY:
+{old_clause}
+
+Classify the existing policy as exactly one of:
+
+- compliant: the existing policy adequately covers the new requirement
+- gap: the existing policy is related but needs additional requirements
+- conflict: the existing policy contradicts the new requirement
+- no_existing_policy: the policy does not meaningfully address the requirement
+
+Important:
+- Do not treat generic words like "compliance", "regulatory", or "company"
+  as evidence of a meaningful match.
+- Focus on the actual regulatory subject and obligation.
+- Keep the explanation to ONE short sentence.
+- Keep the suggested_edit to ONE short sentence.
+- If status is compliant, suggested_edit must be null.
+
+Return ONLY JSON.
 """
 
 
 class MockLLM:
     """
-    Heuristic stand-in for an LLM call. Uses word-overlap similarity as a
-    crude proxy for "does the old clause already cover this new clause".
-    Good enough to validate the pipeline end-to-end offline; NOT a
-    substitute for the real model in the actual demo.
+    Rule-based stand-in used in LOCAL_TEST_MODE.
     """
 
-    def analyze(self, new_clause: str, old_clause: str, match_score: float) -> dict:
-        new_words = set(re.findall(r"\w+", new_clause.lower()))
-        old_words = set(re.findall(r"\w+", old_clause.lower()))
-        overlap = len(new_words & old_words) / max(len(new_words), 1)
+    def analyze(
+        self,
+        new_clause: str,
+        old_clause: str,
+        match_score: float
+    ) -> dict:
+
+        new_words = set(
+            re.findall(r"\w+", new_clause.lower())
+        )
+
+        old_words = set(
+            re.findall(r"\w+", old_clause.lower())
+        )
+
+        overlap = (
+            len(new_words & old_words)
+            / max(len(new_words), 1)
+        )
 
         if match_score < 0.08:
             return {
                 "status": "no_existing_policy",
-                "explanation": "No sufficiently similar clause found in the existing policy.",
-                "suggested_edit": "Add a new clause covering this requirement.",
+                "explanation": (
+                    "No sufficiently similar policy clause was found."
+                ),
+                "suggested_edit": (
+                    "Add a new policy clause covering this requirement."
+                ),
             }
+
         if overlap > 0.45:
             return {
                 "status": "compliant",
-                "explanation": "Existing clause substantially overlaps with the new requirement.",
+                "explanation": (
+                    "The existing policy substantially covers the requirement."
+                ),
                 "suggested_edit": None,
             }
-        if overlap > 0.2:
+
+        if overlap > 0.20:
             return {
                 "status": "gap",
-                "explanation": "Existing clause is related but does not fully cover the new requirement.",
-                "suggested_edit": "Update the existing clause to explicitly include the new requirement's terms.",
+                "explanation": (
+                    "The existing policy addresses the topic but lacks "
+                    "some required details."
+                ),
+                "suggested_edit": (
+                    "Update the policy to explicitly include the new requirement."
+                ),
             }
+
         return {
             "status": "conflict",
-            "explanation": "Existing clause appears to address the same topic but may contradict the new requirement.",
-            "suggested_edit": "Review and align the existing clause with the new circular's wording.",
+            "explanation": (
+                "The existing policy may contradict the new requirement."
+            ),
+            "suggested_edit": (
+                "Review and align the policy with the new regulatory requirement."
+            ),
         }
 
 
-class ClaudeGapAnalyzer:
-    def __init__(self):
-        import anthropic
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+class GeminiGapAnalyzer:
 
-    def analyze(self, new_clause: str, old_clause: str, match_score: float) -> dict:
-        prompt = PROMPT_TEMPLATE.format(new_clause=new_clause, old_clause=old_clause)
-        response = self.client.messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}],
+    def __init__(self):
+
+        if not GEMINI_API_KEY:
+            raise ValueError(
+                "GEMINI_API_KEY is required when "
+                "REGTRACK_LOCAL_TEST_MODE=false"
+            )
+
+        from google import genai
+
+        self.client = genai.Client(
+            api_key=GEMINI_API_KEY
         )
-        raw_text = response.content[0].text.strip()
-        raw_text = re.sub(r"^```json|```$", "", raw_text).strip()
+
+    def analyze(
+        self,
+        new_clause: str,
+        old_clause: str,
+        match_score: float
+    ) -> dict:
+
+        prompt = PROMPT_TEMPLATE.format(
+            new_clause=new_clause,
+            old_clause=old_clause,
+        )
+
+        response = self.client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+
+                "response_json_schema": {
+                    "type": "object",
+                    "properties": {
+                        "status": {
+                            "type": "string",
+                            "enum": [
+                                "compliant",
+                                "gap",
+                                "conflict",
+                                "no_existing_policy",
+                            ],
+                        },
+                        "explanation": {
+                            "type": "string",
+                        },
+                        "suggested_edit": {
+                            "type": [
+                                "string",
+                                "null",
+                            ],
+                        },
+                    },
+                    "required": [
+                        "status",
+                        "explanation",
+                        "suggested_edit",
+                    ],
+                },
+
+                "max_output_tokens": 500,
+            },
+        )
+
+        raw_text = response.text.strip()
+
         try:
-            return json.loads(raw_text)
-        except json.JSONDecodeError:
+
+            result = json.loads(raw_text)
+
+            return {
+                "status": result.get("status"),
+                "explanation": result.get("explanation"),
+                "suggested_edit": result.get("suggested_edit"),
+            }
+
+        except (json.JSONDecodeError, TypeError):
+
             return {
                 "status": "error",
-                "explanation": f"Could not parse LLM response: {raw_text[:200]}",
+                "explanation": (
+                    f"Could not parse LLM response: "
+                    f"{raw_text[:300]}"
+                ),
                 "suggested_edit": None,
             }
 
 
 def get_gap_analyzer():
+
     if LOCAL_TEST_MODE:
         return MockLLM()
-    return ClaudeGapAnalyzer()
+
+    return GeminiGapAnalyzer()
