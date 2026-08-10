@@ -10,3 +10,9 @@ python-multipart>=0.0.20
 requests>=2.32.0
 beautifulsoup4>=4.13.0
 python-dotenv>=1.0.1
+pandas
+xgboost
+Shap
+streamlit
+plotly
+joblit
